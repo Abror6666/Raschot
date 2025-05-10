@@ -1,0 +1,1529 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Панель учета аккаунтов</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+    body {
+      background: linear-gradient(rgba(10, 11, 26, 0.9), rgba(10, 11, 26, 0.9)), url('https://images.unsplash.com/photo-1605733513597-a8f8343a1485?q=80&w=1920&auto=format&fit=crop') no-repeat center center fixed;
+      background-size: cover;
+      color: #E0E7FF;
+      font-family: 'Inter', sans-serif;
+      padding: 20px;
+      margin: 0;
+      min-height: 100vh;
+      animation: fadeIn 1s ease-in;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    header {
+      background: rgba(20, 25, 60, 0.7);
+      backdrop-filter: blur(10px);
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 20px rgba(0, 212, 255, 0.2);
+    }
+
+    h1, h2, h3 {
+      color: #ffffff;
+      text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+    }
+
+    button {
+      background: linear-gradient(45deg, #00D4FF, #3B82F6);
+      color: #ffffff;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      margin: 6px;
+      transition: transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3);
+      pointer-events: auto;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0, 212, 255, 0.5);
+    }
+
+    select, input[type="text"], input[type="number"], input[type="email"], input[type="password"] {
+      background: rgba(40, 45, 80, 0.5);
+      color: #E0E7FF;
+      border: 1px solid rgba(0, 212, 255, 0.3);
+      padding: 10px;
+      border-radius: 8px;
+      margin: 6px;
+      width: 100%;
+      box-sizing: border-box;
+      transition: border-color 0.2s;
+    }
+
+    select:focus, input:focus {
+      outline: none;
+      border-color: #00D4FF;
+      box-shadow: 0 0 8px rgba(0, 212, 255, 0.5);
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: rgba(20, 25, 60, 0.7);
+      backdrop-filter: blur(10px);
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 20px rgba(0, 212, 255, 0.2);
+      animation: slideIn 0.5s ease-out;
+    }
+
+    @keyframes slideIn {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: rgba(30, 35, 70, 0.5);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    th, td {
+      border: 1px solid rgba(0, 212, 255, 0.2);
+      padding: 12px;
+      text-align: left;
+    }
+
+    th {
+      background: linear-gradient(45deg, #3B82F6, #00D4FF);
+      color: #ffffff;
+    }
+
+    tr {
+      transition: background 0.2s;
+    }
+
+    tr:hover {
+      background: rgba(0, 212, 255, 0.1);
+    }
+
+    .error {
+      color: #FF6B6B;
+      font-size: 0.9em;
+      margin-top: 8px;
+      text-shadow: 0 0 5px rgba(255, 107, 107, 0.5);
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+    }
+
+    .view {
+      display: block;
+    }
+
+    button.active {
+      background: linear-gradient(45deg, #ffffff, #E0E7FF);
+      color: #0A0B1A;
+      box-shadow: 0 4px 15px rgba(255, 255, 255, 0.3);
+    }
+
+    button.red {
+      background: linear-gradient(45deg, #FF6B6B, #EF4444);
+    }
+
+    button.red:hover {
+      box-shadow: 0 6px 20px rgba(255, 107, 107, 0.5);
+    }
+
+    button.yellow {
+      background: linear-gradient(45deg, #FBBF24, #F59E0B);
+    }
+
+    button.yellow:hover {
+      box-shadow: 0 6px 20px rgba(251, 191, 36, 0.5);
+    }
+
+    button.green {
+      background: linear-gradient(45deg, #34D399, #10B981);
+    }
+
+    button.green:hover {
+      box-shadow: 0 6px 20px rgba(52, 211, 153, 0.5);
+    }
+
+    canvas {
+      background: rgba(20, 25, 60, 0.7);
+      border-radius: 12px;
+      padding: 15px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 20px rgba(0, 212, 255, 0.2);
+    }
+
+    input[readonly] {
+      background: rgba(60, 65, 100, 0.5);
+      cursor: not-allowed;
+    }
+
+    #confirm-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+
+    #confirm-modal .card {
+      max-width: 400px;
+      text-align: center;
+    }
+
+    #confirm-modal button {
+      min-width: 100px;
+      margin: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div id="auth" class="container card">
+    <h2>Вход</h2>
+    <input id="email" type="email" placeholder="Email" />
+    <input id="password" type="password" placeholder="Пароль" />
+    <button id="login-btn">Войти</button>
+    <button id="register-btn" class="green">Зарегистрироваться</button>
+    <button id="reset-password-btn" class="yellow">Сбросить пароль</button>
+    <div id="auth-error" class="error hidden"></div>
+  </div>
+
+  <div id="app" class="container hidden">
+    <header>
+      <h1>Панель учета аккаунтов</h1>
+      <div style="margin-top: 8px;">
+        <button id="transactions-btn" class="active">Транзакции</button>
+        <button id="reports-btn">Отчеты</button>
+        <select id="month-select"></select>
+        <button id="add-month-btn" class="green">Добавить месяц</button>
+        <button id="reset-data-btn" class="red">Сбросить балансы</button>
+        <button id="logout-btn" class="yellow">Выйти</button>
+      </div>
+    </header>
+
+    <div id="transactions" class="view card">
+      <div>
+        <h2 id="form-title">Добавить транзакцию</h2>
+        <div class="grid">
+          <select id="type">
+            <option value="Покупка">Покупка</option>
+            <option value="Продажа">Продажа</option>
+            <option value="Перевод">Перевод</option>
+            <option value="Пополнение">Пополнение</option>
+            <option value="Списание">Списание</option>
+          </select>
+          <div id="purchase-sale-fields">
+            <select id="category">
+              <option value="Закупка аккаунтов">Закупка аккаунтов</option>
+              <option value="Epic Games">Epic Games</option>
+              <option value="Fortnite">Fortnite</option>
+            </select>
+            <select id="subcategory" class="hidden">
+              <option value="">Выберите подкатегорию</option>
+              <option value="Epic Games">Epic Games</option>
+              <option value="Fortnite">Fortnite</option>
+            </select>
+            <input id="amount" type="number" step="0.01" placeholder="Сумма (RUB/USDT)" />
+            <select id="account">
+              <option value="FunPay">FunPay (RUB)</option>
+              <option value="CryptoBot">CryptoBot (USDT)</option>
+              <option value="Binance">Binance (USDT)</option>
+              <option value="Lolz">Lolz (RUB)</option>
+            </select>
+            <input id="quantity" type="number" placeholder="Количество аккаунтов" />
+            <input id="note" type="text" placeholder="Примечание" />
+          </div>
+          <div id="transfer-fields" class="hidden">
+            <select id="fromAccount">
+              <option value="FunPay">FunPay (RUB)</option>
+              <option value="CryptoBot">CryptoBot (USDT)</option>
+              <option value="Binance">Binance (USDT)</option>
+              <option value="Lolz">Lolz (RUB)</option>
+            </select>
+            <select id="toAccount">
+              <option value="FunPay">FunPay (RUB)</option>
+              <option value="CryptoBot">CryptoBot (USDT)</option>
+              <option value="Binance">Binance (USDT)</option>
+              <option value="Lolz">Lolz (RUB)</option>
+            </select>
+            <input id="amountFrom" type="number" step="0.01" placeholder="Сумма отправки (USDT/RUB)" />
+            <input id="amountTo" type="number" step="0.01" placeholder="Сумма получения (RUB/USDT)" />
+            <input id="exchangeRate" type="number" step="0.01" placeholder="Курс обмена (RUB за USDT)" readonly />
+            <input id="transferNote" type="text" placeholder="Примечание" />
+          </div>
+          <div id="deposit-fields" class="hidden">
+            <input id="depositAmount" type="number" step="0.01" placeholder="Сумма (RUB/USDT)" />
+            <select id="depositAccount">
+              <option value="FunPay">FunPay (RUB)</option>
+              <option value="CryptoBot">CryptoBot (USDT)</option>
+              <option value="Binance">Binance (USDT)</option>
+              <option value="Lolz">Lolz (RUB)</option>
+            </select>
+            <input id="depositNote" type="text" placeholder="Примечание" />
+          </div>
+          <div id="withdrawal-fields" class="hidden">
+            <select id="withdrawalCategory">
+              <option value="Расходы на продажу">Расходы на продажу</option>
+              <option value="Вывод на карту">Вывод на карту</option>
+            </select>
+            <input id="withdrawalAmount" type="number" step="0.01" placeholder="Сумма (RUB/USDT)" />
+            <select id="withdrawalAccount">
+              <option value="FunPay">FunPay (RUB)</option>
+              <option value="CryptoBot">CryptoBot (USDT)</option>
+              <option value="Binance">Binance (USDT)</option>
+              <option value="Lolz">Lolz (RUB)</option>
+            </select>
+            <input id="withdrawalAmountUZS" type="number" step="0.01" placeholder="Сумма в UZS" class="hidden" />
+            <input id="withdrawalNote" type="text" placeholder="Примечание" />
+          </div>
+          <input type="hidden" id="editId" />
+          <div id="error-message" class="error hidden"></div>
+          <button id="submit-btn">Добавить транзакцию</button>
+          <button id="cancel-btn" class="hidden">Отменить редактирование</button>
+        </div>
+      </div>
+
+      <div>
+        <h2>Остаток аккаунтов</h2>
+        <div class="grid" id="account-stock">
+          <!-- Остаток аккаунтов Epic Games и Fortnite будет добавлен динамически -->
+        </div>
+      </div>
+
+      <div>
+        <h2>История транзакций (<span id="current-month">2025-04</span>)</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Дата</th>
+              <th>Тип</th>
+              <th>Категория/Счета</th>
+              <th>Сумма</th>
+              <th>Количество</th>
+              <th>Примечание</th>
+              <th>Действия</th>
+            </tr>
+          </thead>
+          <tbody id="transaction-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="reports" class="view card hidden">
+      <h2>Отчеты (<span id="current-month-reports">2025-04</span>)</h2>
+      <div>
+        <h3>Балансы счетов</h3>
+        <div class="grid" id="balances">
+          <!-- Балансы счетов будут добавлены динамически -->
+        </div>
+        <div class="grid">
+          <div class="card">
+            <h3>Общая сумма в RUB</h3>
+            <p id="total-rub">0.00 RUB</p>
+          </div>
+          <div class="card">
+            <h3>Общая сумма в USDT</h3>
+            <p id="total-usdt">0.00 USDT</p>
+          </div>
+          <div class="card">
+            <h3>Общая сумма в RUB (по курсу Google Финансов)</h3>
+            <p id="total-converted-rub">0.00 RUB</p>
+            <p>Курс Google Финансов: 82.1981 RUB/USDT</p>
+          </div>
+        </div>
+      </div>
+      <div>
+        <h3>Финансовые показатели</h3>
+        <div class="grid">
+          <div class="card">
+            <p>Доходы от продаж</p>
+            <p id="total-income">0.00 RUB</p>
+          </div>
+          <div class="card">
+            <p>Расходы (закупка + продажа)</p>
+            <p id="total-expenses">0.00 RUB</p>
+          </div>
+          <div class="card">
+            <p>Прибыль</p>
+            <p id="profit">0.00 RUB</p>
+          </div>
+          <div class="card">
+            <p>Средняя покупка</p>
+            <p id="avg-purchase">0.00 RUB</p>
+          </div>
+          <div class="card">
+            <p>Средняя продажа</p>
+            <p id="avg-sale">0.00 RUB</p>
+          </div>
+          <div class="card">
+            <p>Средняя покупка Epic Games</p>
+            <p id="avg-purchase-epic">0.00 RUB</p>
+          </div>
+          <div class="card">
+            <p>Средняя продажа Epic Games</p>
+            <p id="avg-sale-epic">0.00 RUB</p>
+          </div>
+          <div class="card">
+            <p>Средняя покупка Fortnite</p>
+            <p id="avg-purchase-fortnite">0.00 RUB</p>
+          </div>
+          <div class="card">
+            <p>Средняя продажа Fortnite</p>
+            <p id="avg-sale-fortnite">0.00 RUB</p>
+          </div>
+          <div class="card">
+            <p>Остаток аккаунтов Epic Games</p>
+            <p id="stock-epic">0</p>
+          </div>
+          <div class="card">
+            <p>Остаток аккаунтов Fortnite</p>
+            <p id="stock-fortnite">0</p>
+          </div>
+          <div class="card">
+            <p>Выводы на карту</p>
+            <p id="total-withdrawals">0.00 UZS</p>
+            <p id="withdrawal-details">Списано: 0.00 RUB, 0.00 USDT</p>
+          </div>
+        </div>
+      </div>
+      <div>
+        <h3>История по месяцам</h3>
+        <canvas id="turnoverChart" height="100"></canvas>
+        <canvas id="profitChart" height="100"></canvas>
+        <canvas id="salesChart" height="100"></canvas>
+        <table>
+          <thead>
+            <tr>
+              <th>Месяц</th>
+              <th>Оборот (RUB)</th>
+              <th>Прибыль (RUB)</th>
+              <th>Проданные аккаунты</th>
+            </tr>
+          </thead>
+          <tbody id="monthly-reports"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="confirm-modal" class="hidden">
+      <div class="card">
+        <h3>Подтверждение удаления</h3>
+        <p>Вы уверены, что хотите удалить эту транзакцию?</p>
+        <button id="confirm-yes" class="green">Да</button>
+        <button id="confirm-no" class="red">Нет</button>
+      </div>
+    </div>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js';
+    import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js';
+    import { getFirestore, collection, doc, getDocs, setDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDQGjhr9RMwiOC27hB1rEipwQWfm8jEjmA",
+      authDomain: "raschot-deaa9.firebaseapp.com",
+      projectId: "raschot-deaa9",
+      storageBucket: "raschot-deaa9.firebasestorage.app",
+      messagingSenderId: "664084831389",
+      appId: "1:664084831389:web:d12d8fa361b97b0e918874"
+    };
+
+    let auth, db;
+    try {
+      const app = initializeApp(firebaseConfig);
+      console.log('Firebase initialized successfully');
+      auth = getAuth(app);
+      console.log('Auth initialized:', auth);
+      db = getFirestore(app);
+      console.log('Firestore initialized:', db);
+    } catch (err) {
+      console.error('Firebase initialization error:', err);
+      showAuthError('Ошибка инициализации Firebase: ' + err.message);
+    }
+
+    const accounts = [
+      { id: 1, name: 'FunPay', balance: 0, currency: 'RUB' },
+      { id: 2, name: 'CryptoBot', balance: 0, currency: 'USDT' },
+      { id: 3, name: 'Binance', balance: 0, currency: 'USDT' },
+      { id: 4, name: 'Lolz', balance: 0, currency: 'RUB' },
+    ];
+
+    const exchangeRates = {
+      RUBtoUZS: 130,
+      USDTtoUZS: 12700,
+      USDTtoRUB: 82.1981,
+    };
+
+    let transactions = {};
+    let currentMonth = new Date().toISOString().slice(0, 7);
+    let currentUser = null;
+    let turnoverChart, profitChart, salesChart;
+    let deleteTransactionId = null;
+
+    function showAuthError(message) {
+      const errorDiv = document.getElementById('auth-error');
+      errorDiv.textContent = message;
+      errorDiv.classList.remove('hidden');
+      setTimeout(() => {
+        errorDiv.classList.add('hidden');
+        errorDiv.textContent = '';
+      }, 5000);
+    }
+
+    function login() {
+      console.log('Login function called');
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value.trim();
+      console.log('Login attempt with email:', email);
+      if (!email || !password) {
+        showAuthError('Введите email и пароль');
+        return;
+      }
+      if (!auth) {
+        showAuthError('Ошибка: Firebase Auth не инициализирован');
+        return;
+      }
+      console.log('Attempting Firebase sign-in...');
+      signInWithEmailAndPassword(auth, email, password)
+        .then(userCredential => {
+          console.log('Login successful, user:', userCredential.user.uid);
+        })
+        .catch(err => {
+          console.error('Login error:', err.code, err.message);
+          showAuthError(`Ошибка входа: ${err.code} - ${err.message}`);
+        });
+    }
+
+    function register() {
+      console.log('Register function called');
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value.trim();
+      if (!email || !password) {
+        showAuthError('Введите email и пароль');
+        return;
+      }
+      createUserWithEmailAndPassword(auth, email, password)
+        .then(() => {
+          console.log('Registration successful');
+          return signInWithEmailAndPassword(auth, email, password);
+        })
+        .catch(err => {
+          console.error('Register error:', err);
+          showAuthError('Ошибка регистрации: ' + err.message);
+        });
+    }
+
+    function resetPassword() {
+      console.log('Reset password function called');
+      const email = document.getElementById('email').value.trim();
+      if (!email) {
+        showAuthError('Введите email для сброса пароля');
+        return;
+      }
+      sendPasswordResetEmail(auth, email)
+        .then(() => {
+          console.log('Password reset email sent');
+          showAuthError('Письмо для сброса пароля отправлено');
+        })
+        .catch(err => {
+          console.error('Reset password error:', err);
+          showAuthError('Ошибка: ' + err.message);
+        });
+    }
+
+    function logout() {
+      console.log('Logout initiated');
+      signOut(auth);
+    }
+
+    onAuthStateChanged(auth, async user => {
+      console.log('Auth state changed, user:', user ? user.uid : null);
+      if (user) {
+        currentUser = user;
+        document.getElementById('auth').classList.add('hidden');
+        document.getElementById('app').classList.remove('hidden');
+        await loadTransactions();
+        await loadMonths();
+        renderTransactions();
+        initializeModal();
+      } else {
+        currentUser = null;
+        transactions = {};
+        document.getElementById('auth').classList.remove('hidden');
+        document.getElementById('app').classList.add('hidden');
+      }
+    });
+
+    async function loadTransactions() {
+      if (!currentUser) return;
+      transactions = {};
+      try {
+        const snapshot = await getDocs(collection(db, 'users', currentUser.uid, 'transactions'));
+        if (snapshot.empty) {
+          transactions[currentMonth] = [];
+        } else {
+          snapshot.forEach(doc => {
+            const month = doc.id;
+            transactions[month] = doc.data().transactions || [];
+          });
+        }
+        console.log('Transactions loaded:', transactions);
+        updateAccountBalances();
+      } catch (err) {
+        console.error('Ошибка загрузки транзакций:', err);
+        showAuthError('Ошибка загрузки данных: ' + err.message);
+      }
+    }
+
+    async function saveTransactions() {
+      if (!currentUser) return;
+      try {
+        for (const month in transactions) {
+          const trans = transactions[month] || [];
+          const docRef = doc(db, 'users', currentUser.uid, 'transactions', month);
+          if (trans.length === 0) {
+            await deleteDoc(docRef);
+          } else {
+            await setDoc(docRef, { transactions: trans }, { merge: true });
+          }
+        }
+      } catch (err) {
+        console.error('Error saving transactions:', err);
+        showAuthError('Ошибка сохранения данных: ' + err.message);
+      }
+    }
+
+    async function loadMonths() {
+      const months = Object.keys(transactions);
+      const now = new Date();
+      const currentMonthStr = now.toISOString().slice(0, 7);
+      const nextMonth = new Date(now.setMonth(now.getMonth() + 1)).toISOString().slice(0, 7);
+      if (!months.includes(currentMonthStr)) {
+        months.push(currentMonthStr);
+        transactions[currentMonthStr] = [];
+      }
+      if (!months.includes(nextMonth)) {
+        months.push(nextMonth);
+        transactions[nextMonth] = [];
+      }
+      const select = document.getElementById('month-select');
+      select.innerHTML = '';
+      months.sort((a, b) => b.localeCompare(a)).forEach(month => {
+        const option = document.createElement('option');
+        option.value = month;
+        option.textContent = new Date(`${month}-01`).toLocaleString('ru', { month: 'long', year: 'numeric' });
+        if (month === currentMonth) option.selected = true;
+        select.appendChild(option);
+      });
+    }
+
+    async function addNewMonth() {
+      const lastMonth = document.getElementById('month-select').options[0].value;
+      const [year, month] = lastMonth.split('-').map(Number);
+      const nextDate = new Date(year, month, 1);
+      nextDate.setMonth(nextDate.getMonth() + 1);
+      const newMonth = nextDate.toISOString().slice(0, 7);
+      transactions[newMonth] = [];
+      await saveTransactions();
+      await loadMonths();
+      changeMonth(newMonth);
+      showError(`Месяц ${nextDate.toLocaleString('ru', { month: 'long', year: 'numeric' })} добавлен.`);
+    }
+
+    function showError(message) {
+      const errorDiv = document.getElementById('error-message');
+      errorDiv.textContent = message;
+      errorDiv.classList.remove('hidden');
+      setTimeout(() => {
+        errorDiv.classList.add('hidden');
+        errorDiv.textContent = '';
+      }, 5000);
+    }
+
+    async function resetData() {
+      if (!currentUser) return;
+
+      try {
+        // Получаем все документы в коллекции transactions
+        const snapshot = await getDocs(collection(db, 'users', currentUser.uid, 'transactions'));
+        
+        // Удаляем каждый документ
+        const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+        await Promise.all(deletePromises);
+
+        // Очищаем локальные данные
+        transactions = {};
+        accounts.forEach(acc => acc.balance = 0);
+
+        // Сохраняем пустые транзакции
+        await saveTransactions();
+
+        // Перезагружаем месяцы и интерфейс
+        await loadMonths();
+        updateAccountBalances();
+        renderTransactions();
+        showError('Балансы и транзакции успешно сброшены.');
+      } catch (err) {
+        console.error('Ошибка при сбросе данных:', err);
+        showError('Ошибка при сбросе данных: ' + err.message);
+      }
+    }
+
+    function initializeModal() {
+      const modal = document.getElementById('confirm-modal');
+      const confirmYes = document.getElementById('confirm-yes');
+      const confirmNo = document.getElementById('confirm-no');
+      modal.classList.add('hidden');
+      confirmYes.addEventListener('click', async () => {
+        if (deleteTransactionId) {
+          transactions[currentMonth] = transactions[currentMonth].filter(t => t.id !== deleteTransactionId);
+          await saveTransactions();
+          renderTransactions();
+          showError('Транзакция успешно удалена');
+          deleteTransactionId = null;
+        }
+        modal.classList.add('hidden');
+      });
+      confirmNo.addEventListener('click', () => {
+        modal.classList.add('hidden');
+        deleteTransactionId = null;
+      });
+    }
+
+    function showView(view) {
+      document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
+      document.getElementById(view).classList.remove('hidden');
+      document.getElementById('transactions-btn').classList.remove('active');
+      document.getElementById('reports-btn').classList.remove('active');
+      document.getElementById(`${view}-btn`).classList.add('active');
+      if (view === 'reports') updateReports();
+      else renderTransactions();
+    }
+
+    function changeMonth(month) {
+      currentMonth = month;
+      document.getElementById('current-month').textContent = month;
+      document.getElementById('current-month-reports').textContent = month;
+      updateAccountBalances();
+      renderTransactions();
+      if (!document.getElementById('reports').classList.contains('hidden')) {
+        updateReports();
+      }
+    }
+
+    function updateWithdrawalAmountPlaceholder() {
+      const category = document.getElementById('withdrawalCategory').value;
+      const account = document.getElementById('withdrawalAccount').value;
+      const accountCurrency = accounts.find(a => a.name === account)?.currency || 'RUB';
+      const amountInput = document.getElementById('withdrawalAmount');
+      amountInput.placeholder = `Сумма (${accountCurrency})`;
+      toggleWithdrawalAmountUZSField();
+    }
+
+    function toggleWithdrawalAmountUZSField() {
+      const category = document.getElementById('withdrawalCategory').value;
+      const amountUZSInput = document.getElementById('withdrawalAmountUZS');
+      if (category === 'Вывод на карту') {
+        amountUZSInput.classList.remove('hidden');
+      } else {
+        amountUZSInput.classList.add('hidden');
+        amountUZSInput.value = '';
+      }
+    }
+
+    function toggleSubcategoryField() {
+      const category = document.getElementById('category').value;
+      const subcategoryField = document.getElementById('subcategory');
+      if (category === 'Закупка аккаунтов') {
+        subcategoryField.classList.remove('hidden');
+        subcategoryField.setAttribute('required', 'required');
+      } else {
+        subcategoryField.classList.add('hidden');
+        subcategoryField.removeAttribute('required');
+        subcategoryField.value = '';
+      }
+    }
+
+    function toggleFormFields() {
+      const type = document.getElementById('type').value;
+      const purchaseSaleFields = document.getElementById('purchase-sale-fields');
+      const transferFields = document.getElementById('transfer-fields');
+      const depositFields = document.getElementById('deposit-fields');
+      const withdrawalFields = document.getElementById('withdrawal-fields');
+      [purchaseSaleFields, transferFields, depositFields, withdrawalFields].forEach(field => field.classList.add('hidden'));
+      if (type === 'Покупка' || type === 'Продажа') {
+        purchaseSaleFields.classList.remove('hidden');
+        toggleSubcategoryField();
+      } else if (type === 'Перевод') {
+        transferFields.classList.remove('hidden');
+      } else if (type === 'Пополнение') {
+        depositFields.classList.remove('hidden');
+      } else if (type === 'Списание') {
+        withdrawalFields.classList.remove('hidden');
+        updateWithdrawalAmountPlaceholder();
+      }
+    }
+
+    function calculateExchangeRate() {
+      const amountFrom = parseFloat(document.getElementById('amountFrom').value);
+      const amountTo = parseFloat(document.getElementById('amountTo').value);
+      const exchangeRateInput = document.getElementById('exchangeRate');
+      if (!isNaN(amountFrom) && !isNaN(amountTo) && amountFrom > 0) {
+        const rate = amountTo / amountFrom;
+        exchangeRateInput.value = rate.toFixed(2);
+      } else {
+        exchangeRateInput.value = '';
+      }
+    }
+
+    async function addOrUpdateTransaction() {
+      const type = document.getElementById('type').value;
+      const editId = document.getElementById('editId').value;
+      let trans;
+      try {
+        if (type === 'Перевод') {
+          const amountFrom = parseFloat(document.getElementById('amountFrom').value);
+          const amountTo = parseFloat(document.getElementById('amountTo').value);
+          const exchangeRate = parseFloat(document.getElementById('exchangeRate').value);
+          if (isNaN(amountFrom) || isNaN(amountTo) || isNaN(exchangeRate) || amountFrom <= 0 || amountTo <= 0 || exchangeRate <= 0) {
+            throw new Error('Заполните все поля для перевода корректно.');
+          }
+          trans = {
+            month: currentMonth,
+            id: editId ? parseInt(editId) : (Math.max(...(transactions[currentMonth] || []).map(t => t.id || 0), 0) + 1),
+            date: new Date().toLocaleDateString(),
+            type: 'Перевод',
+            fromAccount: document.getElementById('fromAccount').value,
+            toAccount: document.getElementById('toAccount').value,
+            amountFrom,
+            amountTo,
+            exchangeRate,
+            note: document.getElementById('transferNote').value,
+          };
+        } else if (type === 'Пополнение') {
+          const amount = parseFloat(document.getElementById('depositAmount').value);
+          if (isNaN(amount) || amount <= 0) {
+            throw new Error('Укажите корректную сумму пополнения.');
+          }
+          trans = {
+            month: currentMonth,
+            id: editId ? parseInt(editId) : (Math.max(...(transactions[currentMonth] || []).map(t => t.id || 0), 0) + 1),
+            date: new Date().toLocaleDateString(),
+            type: 'Пополнение',
+            amount,
+            account: document.getElementById('depositAccount').value,
+            note: document.getElementById('depositNote').value,
+          };
+        } else if (type === 'Списание') {
+          const category = document.getElementById('withdrawalCategory').value;
+          const account = document.getElementById('withdrawalAccount').value;
+          const amount = parseFloat(document.getElementById('withdrawalAmount').value);
+          const amountUZS = category === 'Вывод на карту' ? parseFloat(document.getElementById('withdrawalAmountUZS').value) : null;
+          if (isNaN(amount) || amount <= 0) {
+            throw new Error('Укажите корректную сумму списания.');
+          }
+          if (category === 'Вывод на карту' && (isNaN(amountUZS) || amountUZS <= 0)) {
+            throw new Error('Укажите корректную сумму в UZS для вывода на карту.');
+          }
+          trans = {
+            month: currentMonth,
+            id: editId ? parseInt(editId) : (Math.max(...(transactions[currentMonth] || []).map(t => t.id || 0), 0) + 1),
+            date: new Date().toLocaleDateString(),
+            type: 'Списание',
+            category,
+            amount,
+            account,
+            amountUZS: category === 'Вывод на карту' ? amountUZS : null,
+            note: document.getElementById('withdrawalNote').value,
+          };
+        } else {
+          const amount = parseFloat(document.getElementById('amount').value);
+          const quantity = parseInt(document.getElementById('quantity').value);
+          const category = document.getElementById('category').value;
+          const subcategory = category === 'Закупка аккаунтов' ? document.getElementById('subcategory').value : null;
+          if (isNaN(amount) || amount <= 0) {
+            throw new Error('Укажите корректную сумму.');
+          }
+          if ((type === 'Покупка' || type === 'Продажа') && (isNaN(quantity) || quantity <= 0)) {
+            throw new Error('Укажите корректное количество аккаунтов.');
+          }
+          if (category === 'Закупка аккаунтов' && !subcategory) {
+            throw new Error('Выберите подкатегорию для закупки аккаунтов.');
+          }
+          trans = {
+            month: currentMonth,
+            id: editId ? parseInt(editId) : (Math.max(...(transactions[currentMonth] || []).map(t => t.id || 0), 0) + 1),
+            date: new Date().toLocaleDateString(),
+            type,
+            category,
+            subcategory,
+            amount,
+            account: document.getElementById('account').value,
+            quantity: isNaN(quantity) ? null : quantity,
+            note: document.getElementById('note').value,
+          };
+        }
+
+        if (!transactions[currentMonth]) transactions[currentMonth] = [];
+        if (editId) {
+          const index = transactions[currentMonth].findIndex(t => t.id === parseInt(editId));
+          if (index !== -1) {
+            transactions[currentMonth][index] = trans;
+          } else {
+            transactions[currentMonth].push(trans);
+          }
+        } else {
+          transactions[currentMonth].push(trans);
+        }
+        await saveTransactions();
+        await loadMonths();
+        updateAccountBalances();
+        renderTransactions();
+        resetForm();
+        showError('Транзакция успешно сохранена');
+      } catch (err) {
+        console.error('Ошибка сохранения транзакции:', err);
+        showError('Ошибка сохранения транзакции: ' + err.message);
+      }
+    }
+
+    function editTransaction(id) {
+      const trans = transactions[currentMonth]?.find(t => t.id === id);
+      if (!trans) {
+        showError('Транзакция не найдена.');
+        return;
+      }
+      document.getElementById('type').value = trans.type;
+      toggleFormFields();
+      if (trans.type === 'Перевод') {
+        document.getElementById('fromAccount').value = trans.fromAccount;
+        document.getElementById('toAccount').value = trans.toAccount;
+        document.getElementById('amountFrom').value = trans.amountFrom;
+        document.getElementById('amountTo').value = trans.amountTo;
+        document.getElementById('exchangeRate').value = trans.exchangeRate;
+        document.getElementById('transferNote').value = trans.note || '';
+      } else if (trans.type === 'Пополнение') {
+        document.getElementById('depositAmount').value = trans.amount;
+        document.getElementById('depositAccount').value = trans.account;
+        document.getElementById('depositNote').value = trans.note || '';
+      } else if (trans.type === 'Списание') {
+        document.getElementById('withdrawalCategory').value = trans.category;
+        document.getElementById('withdrawalAmount').value = trans.amount;
+        document.getElementById('withdrawalAccount').value = trans.account;
+        document.getElementById('withdrawalAmountUZS').value = trans.amountUZS || '';
+        document.getElementById('withdrawalNote').value = trans.note || '';
+        updateWithdrawalAmountPlaceholder();
+      } else {
+        document.getElementById('category').value = trans.category || 'Закупка аккаунтов';
+        document.getElementById('subcategory').value = trans.subcategory || '';
+        toggleSubcategoryField();
+        document.getElementById('amount').value = trans.amount;
+        document.getElementById('account').value = trans.account;
+        document.getElementById('quantity').value = trans.quantity || '';
+        document.getElementById('note').value = trans.note || '';
+      }
+      document.getElementById('editId').value = id;
+      document.getElementById('form-title').textContent = 'Редактировать транзакцию';
+      document.getElementById('submit-btn').textContent = 'Обновить транзакцию';
+      document.getElementById('cancel-btn').classList.remove('hidden');
+    }
+
+    function cancelEdit() {
+      resetForm();
+    }
+
+    function resetForm() {
+      document.getElementById('type').value = 'Покупка';
+      toggleFormFields();
+      document.getElementById('category').value = 'Закупка аккаунтов';
+      document.getElementById('subcategory').value = '';
+      toggleSubcategoryField();
+      document.getElementById('amount').value = '';
+      document.getElementById('account').value = 'Lolz';
+      document.getElementById('quantity').value = '';
+      document.getElementById('note').value = '';
+      document.getElementById('fromAccount').value = 'CryptoBot';
+      document.getElementById('toAccount').value = 'FunPay';
+      document.getElementById('amountFrom').value = '';
+      document.getElementById('amountTo').value = '';
+      document.getElementById('exchangeRate').value = '';
+      document.getElementById('transferNote').value = '';
+      document.getElementById('depositAmount').value = '';
+      document.getElementById('depositAccount').value = 'FunPay';
+      document.getElementById('depositNote').value = '';
+      document.getElementById('withdrawalCategory').value = 'Расходы на продажу';
+      document.getElementById('withdrawalAmount').value = '';
+      document.getElementById('withdrawalAccount').value = 'FunPay';
+      document.getElementById('withdrawalAmountUZS').value = '';
+      document.getElementById('withdrawalNote').value = '';
+      document.getElementById('editId').value = '';
+      document.getElementById('form-title').textContent = 'Добавить транзакцию';
+      document.getElementById('submit-btn').textContent = 'Добавить транзакцию';
+      document.getElementById('cancel-btn').classList.add('hidden');
+      document.getElementById('withdrawalAmount').placeholder = 'Сумма (RUB)';
+      document.getElementById('withdrawalAmountUZS').classList.add('hidden');
+      document.getElementById('error-message').classList.add('hidden');
+    }
+
+    async function deleteTransaction(id) {
+      deleteTransactionId = id;
+      document.getElementById('confirm-modal').classList.remove('hidden');
+    }
+
+    function updateAccountBalances(specificMonth = currentMonth) {
+      accounts.forEach(acc => {
+        acc.balance = 0;
+      });
+
+      const allMonths = Object.keys(transactions).sort();
+      const relevantMonths = allMonths.filter(month => month <= specificMonth);
+
+      relevantMonths.forEach(month => {
+        (transactions[month] || []).forEach(t => {
+          if (t.type === 'Покупка' || t.type === 'Продажа' || t.type === 'Пополнение' || t.type === 'Списание') {
+            const account = accounts.find(acc => acc.name === t.account);
+            if (account) {
+              const amount = Number(t.amount);
+              if (!isNaN(amount)) {
+                account.balance += (t.type === 'Продажа' || t.type === 'Пополнение') ? amount : -amount;
+              }
+            }
+          } else if (t.type === 'Перевод') {
+            const fromAccount = accounts.find(acc => acc.name === t.fromAccount);
+            const toAccount = accounts.find(acc => acc.name === t.toAccount);
+            if (fromAccount) {
+              const amountFrom = Number(t.amountFrom);
+              if (!isNaN(amountFrom)) {
+                fromAccount.balance -= amountFrom;
+              }
+            }
+            if (toAccount) {
+              const amountTo = Number(t.amountTo);
+              if (!isNaN(amountTo)) {
+                toAccount.balance += amountTo;
+              }
+            }
+          }
+        });
+      });
+
+      console.log('Updated account balances:', accounts.map(acc => ({ name: acc.name, balance: acc.balance, currency: acc.currency })));
+    }
+
+    function calculateAccountStock() {
+      let epicPurchaseQuantity = 0, epicSaleQuantity = 0;
+      let fortnitePurchaseQuantity = 0, fortniteSaleQuantity = 0;
+
+      const allMonths = Object.keys(transactions).sort();
+      const relevantMonths = allMonths.filter(month => month <= currentMonth);
+
+      relevantMonths.forEach(month => {
+        const epicPurchases = (transactions[month] || []).filter(t => t.type === 'Покупка' && (t.category === 'Epic Games' || (t.category === 'Закупка аккаунтов' && t.subcategory === 'Epic Games')));
+        const epicSales = (transactions[month] || []).filter(t => t.type === 'Продажа' && (t.category === 'Epic Games' || (t.category === 'Закупка аккаунтов' && t.subcategory === 'Epic Games')));
+        const fortnitePurchases = (transactions[month] || []).filter(t => t.type === 'Покупка' && (t.category === 'Fortnite' || (t.category === 'Закупка аккаунтов' && t.subcategory === 'Fortnite')));
+        const fortniteSales = (transactions[month] || []).filter(t => t.type === 'Продажа' && (t.category === 'Fortnite' || (t.category === 'Закупка аккаунтов' && t.subcategory === 'Fortnite')));
+
+        epicPurchaseQuantity += epicPurchases.reduce((sum, t) => {
+          const quantity = Number(t.quantity);
+          return sum + (isNaN(quantity) ? 0 : quantity);
+        }, 0);
+        epicSaleQuantity += epicSales.reduce((sum, t) => {
+          const quantity = Number(t.quantity);
+          return sum + (isNaN(quantity) ? 0 : quantity);
+        }, 0);
+        fortnitePurchaseQuantity += fortnitePurchases.reduce((sum, t) => {
+          const quantity = Number(t.quantity);
+          return sum + (isNaN(quantity) ? 0 : quantity);
+        }, 0);
+        fortniteSaleQuantity += fortniteSales.reduce((sum, t) => {
+          const quantity = Number(t.quantity);
+          return sum + (isNaN(quantity) ? 0 : quantity);
+        }, 0);
+      });
+
+      return {
+        epicStock: epicPurchaseQuantity - epicSaleQuantity,
+        fortniteStock: fortnitePurchaseQuantity - fortniteSaleQuantity
+      };
+    }
+
+    function renderTransactions() {
+      const tbody = document.getElementById('transaction-body');
+      tbody.innerHTML = '';
+      (transactions[currentMonth] || []).forEach(t => {
+        const row = document.createElement('tr');
+        let categoryDisplay = '';
+        if (t.type === 'Перевод') {
+          categoryDisplay = `${t.fromAccount} → ${t.toAccount}`;
+        } else if (t.type === 'Покупка') {
+          categoryDisplay = `Покупка с ${t.account} (${t.category}${t.subcategory ? ` - ${t.subcategory}` : ''})`;
+        } else if (t.type === 'Продажа') {
+          categoryDisplay = `Продажа на ${t.account} (${t.category}${t.subcategory ? ` - ${t.subcategory}` : ''})`;
+        } else if (t.type === 'Пополнение') {
+          categoryDisplay = `Пополнение на ${t.account}`;
+        } else if (t.type === 'Списание') {
+          categoryDisplay = `Списание с ${t.account} (${t.category})`;
+        }
+
+        let amountDisplay = '';
+        if (t.type === 'Перевод') {
+          const fromCurrency = accounts.find(a => a.name === t.fromAccount)?.currency || 'RUB';
+          const toCurrency = accounts.find(a => a.name === t.toAccount)?.currency || 'RUB';
+          amountDisplay = `${t.amountFrom} ${fromCurrency} → ${t.amountTo} ${toCurrency}`;
+        } else if (t.type === 'Списание' && t.category === 'Вывод на карту') {
+          const accountCurrency = accounts.find(a => a.name === t.account)?.currency || 'RUB';
+          amountDisplay = `${t.amount} ${accountCurrency} (${(t.amountUZS || 0).toFixed(2)} UZS)`;
+        } else {
+          const accountCurrency = accounts.find(a => a.name === t.account)?.currency || 'RUB';
+          amountDisplay = `${t.amount} ${accountCurrency}`;
+        }
+
+        row.innerHTML = `
+          <td>${t.date}</td>
+          <td>${t.type}</td>
+          <td>${categoryDisplay}</td>
+          <td>${amountDisplay}</td>
+          <td>${t.quantity || '-'}</td>
+          <td>${t.note || '-'}</td>
+          <td>
+            <button class="yellow edit-btn" data-id="${t.id}">Редактировать</button>
+            <button class="red delete-btn" data-id="${t.id}">Удалить</button>
+          </td>
+        `;
+        tbody.appendChild(row);
+      });
+
+      const stock = calculateAccountStock();
+      const stockDiv = document.getElementById('account-stock');
+      stockDiv.innerHTML = `
+        <div class="card">
+          <h3>Epic Games</h3>
+          <p>Остаток: ${stock.epicStock} аккаунтов</p>
+        </div>
+        <div class="card">
+          <h3>Fortnite</h3>
+          <p>Остаток: ${stock.fortniteStock} аккаунтов</p>
+        </div>
+      `;
+
+      tbody.removeEventListener('click', handleTransactionActions);
+      tbody.addEventListener('click', handleTransactionActions);
+    }
+
+    function handleTransactionActions(event) {
+      const target = event.target;
+      const id = parseInt(target.dataset.id);
+      if (target.classList.contains('edit-btn')) {
+        editTransaction(id);
+      } else if (target.classList.contains('delete-btn')) {
+        deleteTransaction(id);
+      }
+    }
+
+    function calculateMonthlyMetrics(month) {
+      const purchases = (transactions[month] || []).filter(t => t.type === 'Покупка');
+      const sales = (transactions[month] || []).filter(t => t.type === 'Продажа');
+      const saleExpenses = (transactions[month] || []).filter(t => t.type === 'Списание' && t.category === 'Расходы на продажу');
+
+      const totalIncome = sales.reduce((sum, t) => {
+        const amount = Number(t.amount);
+        if (isNaN(amount)) return sum;
+        const currency = accounts.find(a => a.name === t.account)?.currency || 'RUB';
+        return sum + (currency === 'RUB' ? amount : amount * exchangeRates.USDTtoRUB);
+      }, 0);
+
+      const totalPurchaseExpenses = purchases.reduce((sum, t) => {
+        const amount = Number(t.amount);
+        if (isNaN(amount)) return sum;
+        const currency = accounts.find(a => a.name === t.account)?.currency || 'RUB';
+        return sum + (currency === 'RUB' ? amount : amount * exchangeRates.USDTtoRUB);
+      }, 0);
+
+      const totalSaleExpenses = saleExpenses.reduce((sum, t) => {
+        const amount = Number(t.amount);
+        if (isNaN(amount)) return sum;
+        const currency = accounts.find(a => a.name === t.account)?.currency || 'RUB';
+        return sum + (currency === 'RUB' ? amount : amount * exchangeRates.USDTtoRUB);
+      }, 0);
+
+      const turnover = totalIncome + totalPurchaseExpenses + totalSaleExpenses;
+      const profit = totalIncome - (totalPurchaseExpenses + totalSaleExpenses);
+      const soldAccounts = sales.reduce((sum, t) => {
+        const quantity = Number(t.quantity);
+        return sum + (isNaN(quantity) ? 0 : quantity);
+      }, 0);
+
+      return { turnover, profit, soldAccounts };
+    }
+
+    function updateReports() {
+      updateAccountBalances();
+      const balancesDiv = document.getElementById('balances');
+      balancesDiv.innerHTML = '';
+      accounts.forEach(acc => {
+        const balance = acc.balance !== undefined && !isNaN(acc.balance) ? acc.balance : 0;
+        const alternateCurrency = acc.currency === 'RUB' ? 'USDT' : 'RUB';
+        const alternateAmount = acc.currency === 'RUB' ? balance / exchangeRates.USDTtoRUB : balance * exchangeRates.USDTtoRUB;
+        const div = document.createElement('div');
+        div.className = 'card';
+        div.innerHTML = `
+          <h3>${acc.name}</h3>
+          <p>Баланс: ${balance.toFixed(2)} ${acc.currency}</p>
+          <p>Сумма в ${alternateCurrency}: ${alternateAmount.toFixed(2)} ${alternateCurrency}</p>
+        `;
+        balancesDiv.appendChild(div);
+      });
+
+      const totalRUB = accounts.reduce((sum, acc) => {
+        if (acc.currency === 'RUB') {
+          return sum + (acc.balance || 0);
+        }
+        return sum;
+      }, 0);
+
+      const totalUSDT = accounts.reduce((sum, acc) => {
+        if (acc.currency === 'USDT') {
+          return sum + (acc.balance || 0);
+        }
+        return sum;
+      }, 0);
+
+      const totalConvertedRUB = totalRUB + (totalUSDT * exchangeRates.USDTtoRUB);
+
+      document.getElementById('total-rub').textContent = `${totalRUB.toFixed(2)} RUB`;
+      document.getElementById('total-usdt').textContent = `${totalUSDT.toFixed(2)} USDT`;
+      document.getElementById('total-converted-rub').textContent = `${totalConvertedRUB.toFixed(2)} RUB`;
+
+      const purchases = (transactions[currentMonth] || []).filter(t => t.type === 'Покупка');
+      const sales = (transactions[currentMonth] || []).filter(t => t.type === 'Продажа');
+      const saleExpenses = (transactions[currentMonth] || []).filter(t => t.type === 'Списание' && t.category === 'Расходы на продажу');
+      const cardWithdrawals = (transactions[currentMonth] || []).filter(t => t.type === 'Списание' && t.category === 'Вывод на карту');
+
+      const totalIncome = sales.reduce((sum, t) => {
+        const amount = Number(t.amount);
+        if (isNaN(amount)) return sum;
+        const currency = accounts.find(a => a.name === t.account)?.currency || 'RUB';
+        return sum + (currency === 'RUB' ? amount : amount * exchangeRates.USDTtoRUB);
+      }, 0);
+
+      const totalPurchaseExpenses = purchases.reduce((sum, t) => {
+        const amount = Number(t.amount);
+        if (isNaN(amount)) return sum;
+        const currency = accounts.find(a => a.name === t.account)?.currency || 'RUB';
+        return sum + (currency === 'RUB' ? amount : amount * exchangeRates.USDTtoRUB);
+      }, 0);
+
+      const totalSaleExpenses = saleExpenses.reduce((sum, t) => {
+        const amount = Number(t.amount);
+        if (isNaN(amount)) return sum;
+        const currency = accounts.find(a => a.name === t.account)?.currency || 'RUB';
+        return sum + (currency === 'RUB' ? amount : amount * exchangeRates.USDTtoRUB);
+      }, 0);
+
+      const totalExpenses = totalPurchaseExpenses + totalSaleExpenses;
+      const profit = totalIncome - totalExpenses;
+      const avgPurchase = purchases.length ? totalPurchaseExpenses / purchases.length : 0;
+      const avgSale = sales.length ? totalIncome / sales.length : 0;
+
+      const epicPurchases = purchases.filter(t => t.category === 'Epic Games' || (t.category === 'Закупка аккаунтов' && t.subcategory === 'Epic Games'));
+      const epicSales = sales.filter(t => t.category === 'Epic Games' || (t.category === 'Закупка аккаунтов' && t.subcategory === 'Epic Games'));
+      const fortnitePurchases = purchases.filter(t => t.category === 'Fortnite' || (t.category === 'Закупка аккаунтов' && t.subcategory === 'Fortnite'));
+      const fortniteSales = sales.filter(t => t.category === 'Fortnite' || (t.category === 'Закупка аккаунтов' && t.subcategory === 'Fortnite'));
+
+      const epicPurchaseTotal = epicPurchases.reduce((sum, t) => {
+        const amount = Number(t.amount);
+        if (isNaN(amount)) return sum;
+        const currency = accounts.find(a => a.name === t.account)?.currency || 'RUB';
+        return sum + (currency === 'RUB' ? amount : amount * exchangeRates.USDTtoRUB);
+      }, 0);
+      const epicPurchaseQuantity = epicPurchases.reduce((sum, t) => {
+        const quantity = Number(t.quantity);
+        return sum + (isNaN(quantity) ? 0 : quantity);
+      }, 0);
+      const avgEpicPurchase = epicPurchaseQuantity ? epicPurchaseTotal / epicPurchaseQuantity : 0;
+
+      const epicSaleTotal = epicSales.reduce((sum, t) => {
+        const amount = Number(t.amount);
+        if (isNaN(amount)) return sum;
+        const currency = accounts.find(a => a.name === t.account)?.currency || 'RUB';
+        return sum + (currency === 'RUB' ? amount : amount * exchangeRates.USDTtoRUB);
+      }, 0);
+      const epicSaleQuantity = epicSales.reduce((sum, t) => {
+        const quantity = Number(t.quantity);
+        return sum + (isNaN(quantity) ? 0 : quantity);
+      }, 0);
+      const avgEpicSale = epicSaleQuantity ? epicSaleTotal / epicSaleQuantity : 0;
+
+      const fortnitePurchaseTotal = fortnitePurchases.reduce((sum, t) => {
+        const amount = Number(t.amount);
+        if (isNaN(amount)) return sum;
+        const currency = accounts.find(a => a.name === t.account)?.currency || 'RUB';
+        return sum + (currency === 'RUB' ? amount : amount * exchangeRates.USDTtoRUB);
+      }, 0);
+      const fortnitePurchaseQuantity = fortnitePurchases.reduce((sum, t) => {
+        const quantity = Number(t.quantity);
+        return sum + (isNaN(quantity) ? 0 : quantity);
+      }, 0);
+      const avgFortnitePurchase = fortnitePurchaseQuantity ? fortnitePurchaseTotal / fortnitePurchaseQuantity : 0;
+
+      const fortniteSaleTotal = fortniteSales.reduce((sum, t) => {
+        const amount = Number(t.amount);
+        if (isNaN(amount)) return sum;
+        const currency = accounts.find(a => a.name === t.account)?.currency || 'RUB';
+        return sum + (currency === 'RUB' ? amount : amount * exchangeRates.USDTtoRUB);
+      }, 0);
+      const fortniteSaleQuantity = fortniteSales.reduce((sum, t) => {
+        const quantity = Number(t.quantity);
+        return sum + (isNaN(quantity) ? 0 : quantity);
+      }, 0);
+      const avgFortniteSale = fortniteSaleQuantity ? fortniteSaleTotal / fortniteSaleQuantity : 0;
+
+      const epicStock = calculateAccountStock().epicStock;
+      const fortniteStock = calculateAccountStock().fortniteStock;
+
+      const totalCardWithdrawalsUZS = cardWithdrawals.reduce((sum, t) => {
+        const amountUZS = Number(t.amountUZS);
+        return sum + (isNaN(amountUZS) ? 0 : amountUZS);
+      }, 0);
+
+      const withdrawalRUB = cardWithdrawals.reduce((sum, t) => {
+        const amount = Number(t.amount);
+        if (isNaN(amount)) return sum;
+        const currency = accounts.find(a => a.name === t.account)?.currency || 'RUB';
+        return sum + (currency === 'RUB' ? amount : 0);
+      }, 0);
+
+      const withdrawalUSDT = cardWithdrawals.reduce((sum, t) => {
+        const amount = Number(t.amount);
+        if (isNaN(amount)) return sum;
+        const currency = accounts.find(a => a.name === t.account)?.currency || 'RUB';
+        return sum + (currency === 'USDT' ? amount : 0);
+      }, 0);
+
+      document.getElementById('total-income').textContent = `${(isNaN(totalIncome) ? 0 : totalIncome).toFixed(2)} RUB`;
+      document.getElementById('total-expenses').textContent = `${(isNaN(totalExpenses) ? 0 : totalExpenses).toFixed(2)} RUB`;
+      document.getElementById('profit').textContent = `${(isNaN(profit) ? 0 : profit).toFixed(2)} RUB`;
+      document.getElementById('avg-purchase').textContent = `${(isNaN(avgPurchase) ? 0 : avgPurchase).toFixed(2)} RUB`;
+      document.getElementById('avg-sale').textContent = `${(isNaN(avgSale) ? 0 : avgSale).toFixed(2)} RUB`;
+      document.getElementById('avg-purchase-epic').textContent = `${(isNaN(avgEpicPurchase) ? 0 : avgEpicPurchase).toFixed(2)} RUB`;
+      document.getElementById('avg-sale-epic').textContent = `${(isNaN(avgEpicSale) ? 0 : avgEpicSale).toFixed(2)} RUB`;
+      document.getElementById('avg-purchase-fortnite').textContent = `${(isNaN(avgFortnitePurchase) ? 0 : avgFortnitePurchase).toFixed(2)} RUB`;
+      document.getElementById('avg-sale-fortnite').textContent = `${(isNaN(avgFortniteSale) ? 0 : avgFortniteSale).toFixed(2)} RUB`;
+      document.getElementById('stock-epic').textContent = `${epicStock}`;
+      document.getElementById('stock-fortnite').textContent = `${fortniteStock}`;
+      document.getElementById('total-withdrawals').textContent = `${(isNaN(totalCardWithdrawalsUZS) ? 0 : totalCardWithdrawalsUZS).toFixed(2)} UZS`;
+      document.getElementById('withdrawal-details').textContent = `Списано: ${withdrawalRUB.toFixed(2)} RUB, ${withdrawalUSDT.toFixed(2)} USDT`;
+
+      const months = Object.keys(transactions).sort();
+      const monthlyData = months.map(month => ({
+        month,
+        label: new Date(`${month}-01`).toLocaleString('ru', { month: 'long', year: 'numeric' }),
+        ...calculateMonthlyMetrics(month)
+      }));
+
+      const monthlyReports = document.getElementById('monthly-reports');
+      monthlyReports.innerHTML = '';
+      monthlyData.forEach(data => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${data.label}</td>
+          <td>${data.turnover.toFixed(2)} RUB</td>
+          <td>${data.profit.toFixed(2)} RUB</td>
+          <td>${data.soldAccounts}</td>
+        `;
+        monthlyReports.appendChild(row);
+      });
+
+      if (turnoverChart) turnoverChart.destroy();
+      if (profitChart) profitChart.destroy();
+      if (salesChart) salesChart.destroy();
+
+      turnoverChart = new Chart(document.getElementById('turnoverChart'), {
+        type: 'bar',
+        data: {
+          labels: monthlyData.map(d => d.label),
+          datasets: [{
+            label: 'Оборот (RUB)',
+            data: monthlyData.map(d => d.turnover),
+            backgroundColor: '#3b82f6',
+            borderColor: '#2563eb',
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: { beginAtZero: true, grid: { color: '#555555' }, ticks: { color: '#e0e0e0' } },
+            x: { grid: { display: false }, ticks: { color: '#e0e0e0' } }
+          },
+          plugins: {
+            legend: { labels: { color: '#e0e0e0' } },
+            title: { display: true, text: 'Оборот по месяцам', color: '#ffffff' }
+          }
+        }
+      });
+
+      profitChart = new Chart(document.getElementById('profitChart'), {
+        type: 'bar',
+        data: {
+          labels: monthlyData.map(d => d.label),
+          datasets: [{
+            label: 'Прибыль (RUB)',
+            data: monthlyData.map(d => d.profit),
+            backgroundColor: '#10b981',
+            borderColor: '#059669',
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: { beginAtZero: true, grid: { color: '#555555' }, ticks: { color: '#e0e0e0' } },
+            x: { grid: { display: false }, ticks: { color: '#e0e0e0' } }
+          },
+          plugins: {
+            legend: { labels: { color: '#e0e0e0' } },
+            title: { display: true, text: 'Прибыль по месяцам', color: '#ffffff' }
+          }
+        }
+      });
+
+      salesChart = new Chart(document.getElementById('salesChart'), {
+        type: 'bar',
+        data: {
+          labels: monthlyData.map(d => d.label),
+          datasets: [{
+            label: 'Проданные аккаунты',
+            data: monthlyData.map(d => d.soldAccounts),
+            backgroundColor: '#f59e0b',
+            borderColor: '#d97706',
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: { beginAtZero: true, grid: { color: '#555555' }, ticks: { color: '#e0e0e0' } },
+            x: { grid: { display: false }, ticks: { color: '#e0e0e0' } }
+          },
+          plugins: {
+            legend: { labels: { color: '#e0e0e0' } },
+            title: { display: true, text: 'Проданные аккаунты по месяцам', color: '#ffffff' }
+          }
+        }
+      });
+    }
+
+    function initializeEventListeners() {
+      const loginBtn = document.getElementById('login-btn');
+      if (loginBtn) {
+        console.log('Login button found, attaching event listener');
+        loginBtn.addEventListener('click', () => {
+          console.log('Login button clicked');
+          login();
+        });
+      } else {
+        console.error('Login button not found');
+      }
+
+      const registerBtn = document.getElementById('register-btn');
+      if (registerBtn) registerBtn.addEventListener('click', register);
+
+      const resetPasswordBtn = document.getElementById('reset-password-btn');
+      if (resetPasswordBtn) resetPasswordBtn.addEventListener('click', resetPassword);
+
+      document.getElementById('logout-btn').addEventListener('click', logout);
+      document.getElementById('transactions-btn').addEventListener('click', () => showView('transactions'));
+      document.getElementById('reports-btn').addEventListener('click', () => showView('reports'));
+      document.getElementById('month-select').addEventListener('change', e => changeMonth(e.target.value));
+      document.getElementById('add-month-btn').addEventListener('click', addNewMonth);
+      document.getElementById('reset-data-btn').addEventListener('click', resetData);
+      document.getElementById('submit-btn').addEventListener('click', addOrUpdateTransaction);
+      document.getElementById('cancel-btn').addEventListener('click', cancelEdit);
+      document.getElementById('type').addEventListener('change', toggleFormFields);
+      document.getElementById('category').addEventListener('change', toggleSubcategoryField);
+      document.getElementById('withdrawalCategory').addEventListener('change', updateWithdrawalAmountPlaceholder);
+      document.getElementById('withdrawalAccount').addEventListener('click', updateWithdrawalAmountPlaceholder);
+      document.getElementById('amountFrom').addEventListener('input', calculateExchangeRate);
+      document.getElementById('amountTo').addEventListener('input', calculateExchangeRate);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log('DOM fully loaded, initializing event listeners');
+      initializeEventListeners();
+    });
+  </script>
+</body>
+</html>
